@@ -4,13 +4,19 @@ import { FilterBar } from '../components/features/dashboard/FilterBar';
 import { OverviewCards, OverallProgress } from '../components/features/dashboard/OverviewCards';
 import { StopList } from '../components/features/dashboard/StopList';
 import { StopDetailModal } from '../components/features/dashboard/StopDetailModal';
+import { HandoverSummaryCard } from '../components/features/dashboard/HandoverSummaryCard';
 import type { StopStats, BusStop } from '../types';
-import { calculateStopStats, calculateDashboardOverview, getShiftLabel } from '../utils/stats';
+import {
+  calculateStopStats,
+  calculateDashboardOverview,
+  getShiftLabel,
+  getHandoverSummary,
+} from '../utils/stats';
 import { routes as allRoutes, stops as allStops, students as allStudents } from '../data';
 import { Car } from 'lucide-react';
 
 export const DashboardPage: React.FC = () => {
-  const { filterConditions, rideRecords, exceptionRecords } = useBusCheckStore();
+  const { filterConditions, rideRecords, exceptionRecords, currentOperator } = useBusCheckStore();
 
   const { routeId, date, shift } = filterConditions;
   const [selectedStop, setSelectedStop] = React.useState<BusStop | null>(null);
@@ -59,6 +65,11 @@ export const DashboardPage: React.FC = () => {
     return routeStudents.filter((s) => s.assignedStopId === selectedStop.id);
   }, [selectedStop, routeStudents]);
 
+  const handover = React.useMemo(
+    () => getHandoverSummary(routeStudents, relevantRecords, allStops),
+    [routeStudents, relevantRecords]
+  );
+
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -88,6 +99,14 @@ export const DashboardPage: React.FC = () => {
       <OverviewCards overview={overview} />
 
       <OverallProgress completionRate={overview.completionRate} />
+
+      <HandoverSummaryCard
+        summary={handover}
+        date={date}
+        shift={shift as 'morning' | 'evening'}
+        route={route}
+        operatorName={currentOperator.name}
+      />
 
       <StopList stopStats={stopStats} onStopClick={setSelectedStop} />
 

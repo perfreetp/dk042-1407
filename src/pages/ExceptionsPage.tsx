@@ -24,6 +24,8 @@ export const ExceptionsPage: React.FC = () => {
     markStudentAsMissing,
     filterConditions,
     rideRecords,
+    batchManualBoard,
+    batchMarkMissing,
   } = useBusCheckStore();
 
   const searchResults = React.useMemo(() => {
@@ -66,6 +68,16 @@ export const ExceptionsPage: React.FC = () => {
   const handleMarkMissing = (student: Student, routeId: string) => {
     const { date, shift } = filterConditions;
     markStudentAsMissing(student.id, routeId, date, shift, '值班老师确认未乘车');
+  };
+
+  const handleBatchManualBoard = (studentIds: string[]) => {
+    const { routeId, date, shift } = filterConditions;
+    return batchManualBoard(studentIds, routeId || '', date, shift);
+  };
+
+  const handleBatchMarkMissing = (studentIds: string[]) => {
+    const { routeId, date, shift } = filterConditions;
+    return batchMarkMissing(studentIds, routeId || '', date, shift, '批量标记：值班老师确认未乘车');
   };
 
   const handleExceptionSubmit = (data: {
@@ -152,6 +164,8 @@ export const ExceptionsPage: React.FC = () => {
         currentDate={date}
         onManualBoard={handleQuickManualBoard}
         onMarkMissing={handleMarkMissing}
+        onBatchManualBoard={handleBatchManualBoard}
+        onBatchMarkMissing={handleBatchMarkMissing}
       />
 
       <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">

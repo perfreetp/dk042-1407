@@ -288,3 +288,61 @@ export function getUnverifiedStudents(
     (s) => s.effectiveStatus === 'no_record' || s.effectiveStatus === 'missing' || s.effectiveStatus === 'pending'
   );
 }
+
+export interface HandoverSummary {
+  totalStudents: number;
+  normalBoarded: number;
+  manualBoarded: StudentRideStatus[];
+  notRidden: StudentRideStatus[];
+  unverified: StudentRideStatus[];
+  notAlighted: StudentRideStatus[];
+  completed: StudentRideStatus[];
+}
+
+export function getHandoverSummary(
+  routeStudents: Student[],
+  records: RideRecord[],
+  stops: BusStop[]
+): HandoverSummary {
+  const all = getStudentsRideStatus(routeStudents, records, stops);
+
+  const unverified: StudentRideStatus[] = [];
+  const manualBoarded: StudentRideStatus[] = [];
+  const notRidden: StudentRideStatus[] = [];
+  const notAlighted: StudentRideStatus[] = [];
+  const completed: StudentRideStatus[] = [];
+  let normalBoarded = 0;
+
+  all.forEach((s) => {
+    switch (s.effectiveStatus) {
+      case 'no_record':
+      case 'pending':
+        unverified.push(s);
+        break;
+      case 'missing':
+        notRidden.push(s);
+        break;
+      case 'manual_boarded':
+        manualBoarded.push(s);
+        break;
+      case 'boarded':
+        notAlighted.push(s);
+        normalBoarded++;
+        break;
+      case 'alighted':
+        completed.push(s);
+        normalBoarded++;
+        break;
+    }
+  });
+
+  return {
+    totalStudents: all.length,
+    normalBoarded,
+    manualBoarded,
+    notRidden,
+    unverified,
+    notAlighted,
+    completed,
+  };
+}

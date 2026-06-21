@@ -1,7 +1,20 @@
 import * as React from 'react';
 import type { Student, RideRecord } from '../../../types';
-import { Modal, StatusBadge } from '../../common';
-import { User, Calendar, MapPin, Bus, Sun, Moon, XCircle, Clock, UserCheck } from 'lucide-react';
+import { Modal, StatusBadge, Button } from '../../common';
+import {
+  User,
+  Calendar,
+  MapPin,
+  Bus,
+  Sun,
+  Moon,
+  XCircle,
+  Clock,
+  UserCheck,
+  Copy,
+  Download,
+  CheckCircle2,
+} from 'lucide-react';
 import {
   getStatusLabel,
   getStatusColor,
@@ -77,6 +90,87 @@ export const StudentTimelineModal: React.FC<StudentTimelineModalProps> = ({
     });
     return { boardedDays, missedDays };
   }, [days]);
+
+  const verificationText = React.useMemo(() => {
+    if (!student) return '';
+    const now = format(new Date(), 'yyyy-MM-dd HH:mm');
+    const lines: string[] = [];
+    lines.push(`【校车乘车核对说明】`);
+    lines.push(`学生姓名：${student.name}`);
+    lines.push(`班级：${student.className}`);
+    lines.push(`学号：${student.studentNo}`);
+    const assignedStop = allStops.find((s) => s.id === student.assignedStopId);
+    if (assignedStop) lines.push(`上车站点：${assignedStop.name}`);
+    lines.push(``);
+    lines.push(`===== 最近7天乘车记录 =====`);
+    days.forEach((d) => {
+      const tag = d.isToday ? '（今天）' : '';
+      lines.push(`\n${d.label} ${d.weekday}${tag}`);
+
+      const renderShift = (label: string, r?: RideRecord) => {
+        if (!r) {
+          lines.push(`  ${label}：未乘车 / 无记录`);
+          return;
+        }
+        const route = findRouteById(r.routeId, allRoutes);
+        const board = r.boardStopId ? findStopById(r.boardStopId, allStops) : undefined;
+        const alight = r.alightStopId ? findStopById(r.alightStopId, allStops) : undefined;
+        const status = getStatusLabel(r.status);
+        const method = r.boardMethod === 'manual' ? '（人工确认）' : '';
+        const parts = [`${label}：${status}${method}`];
+        if (route) parts.push(route.name);
+        if (board && r.boardTime) parts.push(`${board.name}@${r.boardTime}上车`);
+        if (alight && r.alightTime) parts.push(`${alight.name}@${r.alightTime}下车`);
+        lines.push(`  ${parts.join(' | ')}`);
+      };
+      renderShift('早班', d.morning);
+      renderShift('晚班', d.evening);
+    });
+    lines.push(``);
+    lines.push(`===== 汇总 =====`);
+    lines.push(`乘车天数：${stats.boardedDays} 天`);
+    lines.push(`未乘车天：${stats.missedDays} 天（未含今天）`);
+    lines.push(``);
+    lines.push(`导出时间：${now}`);
+    return lines.join('\n');
+  }, [student, days, stats]);
+
+  const [copyState, setCopyState] = React.useState<'idle' | 'copied'>('idle');
+
+  const handleCopy = async () => {
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(verificationText);
+      } else {
+        const ta = document.createElement('textarea');
+        ta.value = verificationText;
+        ta.style.position = 'fixed';
+        ta.style.left = '-9999px';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+      }
+      setCopyState('copied');
+      setTimeout(() => setCopyState('idle'), 2200);
+    } catch {
+      setCopyState('idle');
+    }
+  };
+
+  const handleDownload = () => {
+    if (!student) return;
+    const blob = new Blob([verificationText], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const safeName = student.name.replace(/[\\/:*?"<>|]/g, '_');
+    a.download = `${safeName}-${student.studentNo}-乘车核对-${format(new Date(), 'yyyyMMdd')}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
 
   const renderShiftCard = (date: string, shift: 'morning' | 'evening', record?: RideRecord) => {
     const route = record ? findRouteById(record.routeId, allRoutes) : undefined;
@@ -209,36 +303,61 @@ export const StudentTimelineModal: React.FC<StudentTimelineModalProps> = ({
             </div>
           </div>
 
-          <div className="space-y-3">
+          <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
             <div className="flex items-center gap-2">
               <Calendar className="h-4 w-4 text-slate-500" />
               <h4 className="text-sm font-semibold text-slate-700">近7天乘车时间线</h4>
             </div>
-            <div className="space-y-3">
-              {days.map((day, idx) => (
-                <div
-                  key={day.date}
-                  className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm animate-in fade-in slide-in-from-bottom-2"
-                  style={{ animationDelay: `${idx * 40}ms` }}
-                >
-                  <div className="mb-3 flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-semibold text-slate-700">{day.label}</span>
-                      <span className="text-xs text-slate-500">{day.weekday}</span>
-                    </div>
-                    {day.isToday && (
-                      <span className="rounded-full bg-brand-100 px-2.5 py-0.5 text-[11px] font-semibold text-brand-700">
-                        今天
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex flex-col gap-3 sm:flex-row">
-                    {renderShiftCard(day.date, 'morning', day.morning)}
-                    {renderShiftCard(day.date, 'evening', day.evening)}
-                  </div>
-                </div>
-              ))}
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                icon={
+                  copyState === 'copied' ? (
+                    <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+                  ) : (
+                    <Copy className="h-3.5 w-3.5" />
+                  )
+                }
+                onClick={handleCopy}
+              >
+                {copyState === 'copied' ? '已复制' : '复制核对说明'}
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                icon={<Download className="h-3.5 w-3.5" />}
+                onClick={handleDownload}
+              >
+                导出TXT
+              </Button>
             </div>
+          </div>
+
+          <div className="space-y-3">
+            {days.map((day, idx) => (
+              <div
+                key={day.date}
+                className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm animate-in fade-in slide-in-from-bottom-2"
+                style={{ animationDelay: `${idx * 40}ms` }}
+              >
+                <div className="mb-3 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-semibold text-slate-700">{day.label}</span>
+                    <span className="text-xs text-slate-500">{day.weekday}</span>
+                  </div>
+                  {day.isToday && (
+                    <span className="rounded-full bg-brand-100 px-2.5 py-0.5 text-[11px] font-semibold text-brand-700">
+                      今天
+                    </span>
+                  )}
+                </div>
+                <div className="flex flex-col gap-3 sm:flex-row">
+                  {renderShiftCard(day.date, 'morning', day.morning)}
+                  {renderShiftCard(day.date, 'evening', day.evening)}
+                </div>
+              </div>
+            ))}
           </div>
 
           <div className="flex flex-wrap gap-2 pt-1 text-[11px] text-slate-500">

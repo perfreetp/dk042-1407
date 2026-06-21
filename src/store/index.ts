@@ -44,6 +44,8 @@ interface BusCheckStore {
 
   updateRideRecordToManualBoard: (studentId: string, routeId: string, date: string, shift: ShiftType) => void;
   markStudentAsMissing: (studentId: string, routeId: string, date: string, shift: ShiftType, reason?: string) => void;
+  batchManualBoard: (studentIds: string[], routeId: string, date: string, shift: ShiftType) => number;
+  batchMarkMissing: (studentIds: string[], routeId: string, date: string, shift: ShiftType, reason?: string) => number;
 }
 
 const today = format(new Date(), 'yyyy-MM-dd');
@@ -153,23 +155,41 @@ export const useBusCheckStore = create<BusCheckStore>()(
       },
 
       updateRideRecordToManualBoard: (studentId, routeId, date, shift) => {
-        set((state) => ({
-          rideRecords: state.rideRecords.map((r) => {
-            if (r.studentId === studentId && r.routeId === routeId && r.date === date && r.shift === shift) {
-              const now = new Date();
-              const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-              const student = mockStudents.find((s) => s.id === studentId);
-              return {
-                ...r,
-                status: 'manual_boarded',
-                boardMethod: 'manual',
-                boardTime: timeStr,
-                boardStopId: student?.assignedStopId,
-              };
-            }
-            return r;
-          }),
-        }));
+        const now = new Date();
+        const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+        const student = mockStudents.find((s) => s.id === studentId);
+
+        set((state) => {
+          const existingIndex = state.rideRecords.findIndex(
+            (r) => r.studentId === studentId && r.routeId === routeId && r.date === date && r.shift === shift
+          );
+
+          if (existingIndex >= 0) {
+            const updated = [...state.rideRecords];
+            updated[existingIndex] = {
+              ...updated[existingIndex],
+              status: 'manual_boarded',
+              boardMethod: 'manual',
+              boardTime: timeStr,
+              boardStopId: student?.assignedStopId,
+            };
+            return { rideRecords: updated };
+          }
+
+          const newRecord: RideRecord = {
+            id: `ride-${routeId}-${date}-${shift}-${studentId}-manual-${Date.now()}`,
+            studentId,
+            routeId,
+            date,
+            shift,
+            boardMethod: 'manual',
+            boardTime: timeStr,
+            boardStopId: student?.assignedStopId,
+            alightMethod: null,
+            status: 'manual_boarded',
+          };
+          return { rideRecords: [...state.rideRecords, newRecord] };
+        });
       },
 
       markStudentAsMissing: (studentId, routeId, date, shift, reason) => {
@@ -219,6 +239,159 @@ export const useBusCheckStore = create<BusCheckStore>()(
           rideRecords: updatedRecords,
           exceptionRecords: [exceptionRecord, ...get().exceptionRecords],
         });
+      },
+
+      batchManualBoard: (studentIds, routeId, date, shift) => {
+        const now = new Date();
+        const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+        const createdAtStr = `${date} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
+        const { currentOperator } = get();
+        let processedCount = 0;
+
+        set((state) => {
+          const newRecords = [...state.rideRecords];
+          const newExceptions: ExceptionRecord[] = [];
+
+          studentIds.forEach((studentId) => {
+            const student = mockStudents.find((s) => s.id === studentId);
+            const existingIndex = newRecords.findIndex(
+              (r) => r.studentId === studentId && r.routeId === routeId && r.date === date && r.shift === shift
+            );
+
+            if (existingIndex >= 0) {
+              if (newRecords[existingIndex].status !== 'manual_boarded' &&
+                  newRecords[existingIndex].status !== 'boarded' &&
+                  newRecords[existingIndex].status !== 'alighted') {
+                newRecords[existingIndex] = {
+                  ...newRecords[existingIndex],
+                  status: 'manual_boarded',
+                  boardMethod: 'manual',
+                  boardTime: timeStr,
+                  boardStopId: student?.assignedStopId,
+                };
+                processedCount++;
+                newExceptions.push({
+                  id: generateExceptionId(),
+                  date,
+                  shift,
+                  studentId,
+                  routeId,
+                  type: 'manual_board',
+                  reason: '批量确认：学生忘带卡',
+                  operatorId: currentOperator.id,
+                  operatorName: currentOperator.name,
+                  createdAt: createdAtStr,
+                });
+              }
+            } else {
+              newRecords.push({
+                id: `ride-${routeId}-${date}-${shift}-${studentId}-manual-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+                studentId,
+                routeId,
+                date,
+                shift,
+                boardMethod: 'manual',
+                boardTime: timeStr,
+                boardStopId: student?.assignedStopId,
+                alightMethod: null,
+                status: 'manual_boarded',
+              });
+              processedCount++;
+              newExceptions.push({
+                id: generateExceptionId(),
+                date,
+                shift,
+                studentId,
+                routeId,
+                type: 'manual_board',
+                reason: '批量确认：学生忘带卡',
+                operatorId: currentOperator.id,
+                operatorName: currentOperator.name,
+                createdAt: createdAtStr,
+              });
+            }
+          });
+
+          return {
+            rideRecords: newRecords,
+            exceptionRecords: [...newExceptions, ...state.exceptionRecords],
+          };
+        });
+
+        return processedCount;
+      },
+
+      batchMarkMissing: (studentIds, routeId, date, shift, reason) => {
+        const now = new Date();
+        const createdAtStr = `${date} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
+        const { currentOperator } = get();
+        let processedCount = 0;
+
+        set((state) => {
+          const newRecords = [...state.rideRecords];
+          const newExceptions: ExceptionRecord[] = [];
+
+          studentIds.forEach((studentId) => {
+            const existingIndex = newRecords.findIndex(
+              (r) => r.studentId === studentId && r.routeId === routeId && r.date === date && r.shift === shift
+            );
+
+            if (existingIndex >= 0) {
+              if (newRecords[existingIndex].status !== 'missing') {
+                newRecords[existingIndex] = {
+                  ...newRecords[existingIndex],
+                  status: 'missing',
+                };
+                processedCount++;
+                newExceptions.push({
+                  id: generateExceptionId(),
+                  date,
+                  shift,
+                  studentId,
+                  routeId,
+                  type: 'missing_card',
+                  reason: reason || '批量标记：确认未乘车',
+                  remark: '标记为未乘车',
+                  operatorId: currentOperator.id,
+                  operatorName: currentOperator.name,
+                  createdAt: createdAtStr,
+                });
+              }
+            } else {
+              newRecords.push({
+                id: `ride-${routeId}-${date}-${shift}-${studentId}-missing-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+                studentId,
+                routeId,
+                date,
+                shift,
+                boardMethod: 'card',
+                alightMethod: null,
+                status: 'missing',
+              });
+              processedCount++;
+              newExceptions.push({
+                id: generateExceptionId(),
+                date,
+                shift,
+                studentId,
+                routeId,
+                type: 'missing_card',
+                reason: reason || '批量标记：确认未乘车',
+                remark: '标记为未乘车',
+                operatorId: currentOperator.id,
+                operatorName: currentOperator.name,
+                createdAt: createdAtStr,
+              });
+            }
+          });
+
+          return {
+            rideRecords: newRecords,
+            exceptionRecords: [...newExceptions, ...state.exceptionRecords],
+          };
+        });
+
+        return processedCount;
       },
     }),
     {
