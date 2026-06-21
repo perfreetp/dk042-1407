@@ -5,6 +5,7 @@ import { OverviewCards, OverallProgress } from '../components/features/dashboard
 import { StopList } from '../components/features/dashboard/StopList';
 import { StopDetailModal } from '../components/features/dashboard/StopDetailModal';
 import { HandoverSummaryCard } from '../components/features/dashboard/HandoverSummaryCard';
+import { HandoverReviewModal } from '../components/features/dashboard/HandoverReviewModal';
 import type { StopStats, BusStop } from '../types';
 import {
   calculateStopStats,
@@ -14,12 +15,14 @@ import {
 } from '../utils/stats';
 import { routes as allRoutes, stops as allStops, students as allStudents } from '../data';
 import { Car } from 'lucide-react';
+import { getStudentsRideStatus } from '../utils/stats';
 
 export const DashboardPage: React.FC = () => {
   const { filterConditions, rideRecords, exceptionRecords, currentOperator } = useBusCheckStore();
 
   const { routeId, date, shift } = filterConditions;
   const [selectedStop, setSelectedStop] = React.useState<BusStop | null>(null);
+  const [reviewOpen, setReviewOpen] = React.useState(false);
 
   const route = React.useMemo(
     () => allRoutes.find((r) => r.id === routeId),
@@ -70,6 +73,18 @@ export const DashboardPage: React.FC = () => {
     [routeStudents, relevantRecords]
   );
 
+  const reviewLists = React.useMemo(() => {
+    const list = getStudentsRideStatus(routeStudents, relevantRecords, allStops);
+    return {
+      unverified: list.filter(
+        (s) => s.effectiveStatus === 'no_record' || s.effectiveStatus === 'pending'
+      ),
+      manual: list.filter((s) => s.effectiveStatus === 'manual_boarded'),
+      missing: list.filter((s) => s.effectiveStatus === 'missing'),
+      notAlighted: list.filter((s) => s.effectiveStatus === 'boarded'),
+    };
+  }, [routeStudents, relevantRecords]);
+
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -106,6 +121,7 @@ export const DashboardPage: React.FC = () => {
         shift={shift as 'morning' | 'evening'}
         route={route}
         operatorName={currentOperator.name}
+        onOpenReview={() => setReviewOpen(true)}
       />
 
       <StopList stopStats={stopStats} onStopClick={setSelectedStop} />
@@ -116,6 +132,20 @@ export const DashboardPage: React.FC = () => {
         stop={selectedStop}
         studentsAtStop={studentsAtSelectedStop}
         records={relevantRecords}
+      />
+
+      <HandoverReviewModal
+        open={reviewOpen}
+        onClose={() => setReviewOpen(false)}
+        date={date}
+        shift={shift as 'morning' | 'evening'}
+        route={route}
+        unverified={reviewLists.unverified}
+        manual={reviewLists.manual}
+        missing={reviewLists.missing}
+        notAlighted={reviewLists.notAlighted}
+        allRideRecords={rideRecords}
+        allExceptions={exceptionRecords}
       />
     </div>
   );

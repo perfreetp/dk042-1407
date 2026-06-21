@@ -16,6 +16,19 @@ export const RecordsPage: React.FC = () => {
   const { recordFilters, rideRecords } = useBusCheckStore();
   const [timelineStudent, setTimelineStudent] = React.useState<Student | null>(null);
 
+  React.useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem('timeline_target_student');
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as { studentId: string };
+      const student = allStudents.find((s) => s.id === parsed.studentId);
+      if (student) {
+        setTimeout(() => setTimelineStudent(student), 200);
+      }
+    } catch {}
+    sessionStorage.removeItem('timeline_target_student');
+  }, []);
+
   const enrichedRecords = React.useMemo<EnrichedRideRecord[]>(() => {
     const { startDate, endDate, plateNumber, studentName, routeId } = recordFilters;
 
@@ -93,7 +106,11 @@ export const RecordsPage: React.FC = () => {
           </div>
           <p className="text-xs text-slate-500">点击行可展开查看详情</p>
         </div>
-        <RecordsTable records={enrichedRecords} onStudentClick={setTimelineStudent} />
+        <RecordsTable
+          records={enrichedRecords}
+          allRideRecords={rideRecords}
+          onStudentClick={setTimelineStudent}
+        />
       </div>
 
       <StudentTimelineModal

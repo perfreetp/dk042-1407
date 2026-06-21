@@ -1,4 +1,5 @@
 import type { RiskLevel, StopStats, DashboardOverview, RideRecord, Student, BusStop, BusRoute, ExceptionRecord } from '../types';
+import { format, subDays } from 'date-fns';
 
 export function calculateRiskLevel(notBoarded: number, totalExpected: number): RiskLevel {
   if (totalExpected === 0) return 'normal';
@@ -346,3 +347,84 @@ export function getHandoverSummary(
     completed,
   };
 }
+
+export interface StudentAnomalyAlert {
+  studentId: string;
+  notRiddenCount7d: number;
+  manualCount7d: number;
+  level: 'high' | 'medium' | 'low';
+  reasons: string[];
+  totalAnomalyCount: number;
+}
+
+export function analyzeStudentAnomaly(
+  studentId: string,
+  records: RideRecord[],
+  days = 7
+): StudentAnomalyAlert {
+  const today = new Date();
+  const studentRecords = records.filter((r) => r.studentId === studentId);
+
+  const dailyCounts: { date: string; morning?: RideRecord['status']; evening?: RideRecord['status'] }[] = [];
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date(today);
+    d.setDate(d.getDate() - i);
+    const dateStr = format(d, 'yyyy-MM-dd');
+    const morning = studentRecords.find((r) => r.date === dateStr && r.shift === 'morning')?.status;
+    const evening = studentRecords.find((r) => r.date === dateStr && r.shift === 'evening')?.status;
+    dailyCounts.push({ date: dateStr, morning, evening });
+  }
+
+  let notRidden = 0;
+  let manual = 0;
+  let consecutiveMissing = 0;
+  let maxConsecutiveMissing = 0;
+
+  dailyCounts.forEach((d) => {
+    const shifts: (RideRecord['status'] | undefined)[] = [d.morning, d.evening];
+    shifts.forEach((s) => {
+      if (!s || s === 'missing' || s === 'pending') {
+        notRidden++;
+        consecutiveMissing++;
+        maxConsecutiveMissing = Math.max(maxConsecutiveMissing, consecutiveMissing);
+      } else {
+        consecutiveMissing = 0;
+      }
+      if (s === 'manual_boarded') manual++;
+    });
+  });
+
+  const reasons: string[] = [];
+  let level: StudentAnomalyAlert['level'] = 'low';
+
+  if (notRidden >= 6) {
+    level = 'high';
+    reasons.push(`近${days}天${notRidden}次未乘车`);
+  } else if (notRidden >= 4) {
+    level = 'medium';
+    reasons.push(`近${days}天${notRidden}次未乘车`);
+  }
+
+  if (maxConsecutiveMissing >= 4) {
+    level = 'high';
+    reasons.push(`连续${maxConsecutiveMissing}次未乘车`);
+  } else if (maxConsecutiveMissing >= 3 && level !== 'high') {
+    if (level === 'low') level = 'medium';
+    reasons.push(`连续${maxConsecutiveMissing}次未乘车`);
+  }
+
+  if (manual >= 4) {
+    if (level === 'low') level = 'medium';
+    reasons.push(`人工确认${manual}次（疑似忘带卡频繁）`);
+  }
+
+  return {
+    studentId,
+    notRiddenCount7d: notRidden,
+    manualCount7d: manual,
+    level,
+    reasons,
+    totalAnomalyCount: notRidden + manual,
+  };
+}
+

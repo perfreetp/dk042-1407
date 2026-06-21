@@ -14,6 +14,10 @@ import {
   Copy,
   Download,
   CheckCircle2,
+  AlertTriangle,
+  AlertOctagon,
+  ShieldAlert,
+  Info,
 } from 'lucide-react';
 import {
   getStatusLabel,
@@ -21,10 +25,13 @@ import {
   getShiftLabel,
   findStopById,
   findRouteById,
+  analyzeStudentAnomaly,
 } from '../../../utils/stats';
+import type { StudentAnomalyAlert } from '../../../utils/stats';
 import { stops as allStops, routes as allRoutes } from '../../../data';
 import { format, parseISO, addDays, subDays } from 'date-fns';
 import { zhCN } from 'date-fns/locale';
+import { clsx } from 'clsx';
 
 interface StudentTimelineModalProps {
   open: boolean;
@@ -90,6 +97,11 @@ export const StudentTimelineModal: React.FC<StudentTimelineModalProps> = ({
     });
     return { boardedDays, missedDays };
   }, [days]);
+
+  const anomaly: StudentAnomalyAlert | null = React.useMemo(() => {
+    if (!student) return null;
+    return analyzeStudentAnomaly(student.id, rideRecords, 7);
+  }, [student, rideRecords]);
 
   const verificationText = React.useMemo(() => {
     if (!student) return '';
@@ -302,6 +314,61 @@ export const StudentTimelineModal: React.FC<StudentTimelineModalProps> = ({
               </div>
             </div>
           </div>
+
+          {anomaly && anomaly.level !== 'low' && anomaly.reasons.length > 0 && (
+            <div
+              className={clsx(
+                'mt-4 rounded-xl border p-4 animate-in fade-in slide-in-from-top-2',
+                anomaly.level === 'high'
+                  ? 'border-red-200 bg-red-50/60'
+                  : 'border-amber-200 bg-amber-50/60'
+              )}
+            >
+              <div className="flex items-start gap-3">
+                <div
+                  className={clsx(
+                    'mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
+                    anomaly.level === 'high' ? 'bg-red-100 text-red-600' : 'bg-amber-100 text-amber-600'
+                  )}
+                >
+                  {anomaly.level === 'high' ? (
+                    <AlertOctagon className="h-4 w-4" />
+                  ) : (
+                    <AlertTriangle className="h-4 w-4" />
+                  )}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h5
+                      className={clsx(
+                        'text-sm font-bold',
+                        anomaly.level === 'high' ? 'text-red-800' : 'text-amber-800'
+                      )}
+                    >
+                      {anomaly.level === 'high' ? '⚠️ 高风险 - 建议重点跟进' : '⚡ 中风险 - 建议关注'}
+                    </h5>
+                    <StatusBadge variant={anomaly.level === 'high' ? 'danger' : 'warning'} size="sm">
+                      异常 {anomaly.totalAnomalyCount} 次
+                    </StatusBadge>
+                  </div>
+                  <ul className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
+                    {anomaly.reasons.map((r, i) => (
+                      <li
+                        key={i}
+                        className={clsx(
+                          'flex items-center gap-1 text-xs',
+                          anomaly.level === 'high' ? 'text-red-700' : 'text-amber-700'
+                        )}
+                      >
+                        <ShieldAlert className="h-3 w-3 shrink-0" />
+                        {r}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            </div>
+          )}
 
           <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
             <div className="flex items-center gap-2">

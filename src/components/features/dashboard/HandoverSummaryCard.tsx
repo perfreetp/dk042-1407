@@ -11,11 +11,17 @@ import {
   ChevronDown,
   ChevronUp,
   User,
+  Copy,
+  Download,
+  CheckCircle2,
+  Search,
 } from 'lucide-react';
 import { Button, StatusBadge } from '../../common';
 import type { BusRoute, ShiftType } from '../../../types';
 import { clsx } from 'clsx';
 import { stops as allStops } from '../../../data';
+import { format } from 'date-fns';
+import type { StudentRideStatus } from '../../../utils/stats';
 
 interface HandoverSummaryCardProps {
   summary: HandoverSummary;
@@ -23,6 +29,7 @@ interface HandoverSummaryCardProps {
   shift: ShiftType;
   route: BusRoute | undefined;
   operatorName: string;
+  onOpenReview?: () => void;
 }
 
 type TabKey = 'unverified' | 'manual' | 'missing' | 'notAlighted' | 'completed';
@@ -82,9 +89,11 @@ export const HandoverSummaryCard: React.FC<HandoverSummaryCardProps> = ({
   shift,
   route,
   operatorName,
+  onOpenReview,
 }) => {
   const [expanded, setExpanded] = React.useState(false);
   const [activeTab, setActiveTab] = React.useState<TabKey>('unverified');
+  const [copyState, setCopyState] = React.useState<'idle' | 'copied'>('idle');
 
   const { totalStudents, unverified, manualBoarded, notRidden, notAlighted, completed, normalBoarded } = summary;
   const actualBoarded = normalBoarded + manualBoarded.length;
@@ -107,6 +116,103 @@ export const HandoverSummaryCard: React.FC<HandoverSummaryCardProps> = ({
   };
 
   const activeList = getActiveList();
+
+  const formatStudentLine = (s: StudentRideStatus) => {
+    const stop = s.student.assignedStopId
+      ? allStops.find((st) => st.id === s.student.assignedStopId)?.name
+      : '未分配';
+    const times: string[] = [];
+    if (s.boardTime) times.push(`上车${s.boardTime}`);
+    if (s.alightTime) times.push(`下车${s.alightTime}`);
+    const timesStr = times.length ? ` [${times.join(' ')}]` : '';
+    return `  · ${s.student.name}（${s.student.className}，学号${s.student.studentNo}，${stop}）${timesStr}`;
+  };
+
+  const handoverText = React.useMemo(() => {
+    const now = format(new Date(), 'yyyy-MM-dd HH:mm');
+    const lines: string[] = [];
+    lines.push(`===========================================`);
+    lines.push(`【校车值班交接单】`);
+    lines.push(`===========================================`);
+    lines.push(`交接日期：${date}`);
+    lines.push(`班次：${shift === 'morning' ? '早班' : '晚班'}`);
+    if (route) lines.push(`线路：${route.name}（${route.plateNumber}）`);
+    lines.push(`交接人：${operatorName}`);
+    lines.push(`生成时间：${now}`);
+    lines.push(``);
+    lines.push(`总学生数：${totalStudents} 人`);
+    lines.push(`完成率：${completionRate}%（已上车 ${actualBoarded} 人）`);
+    lines.push(``);
+    lines.push(`-------------------------------------------`);
+    lines.push(`一、未处理（需重点跟进）：${unverified.length} 人`);
+    lines.push(`-------------------------------------------`);
+    if (unverified.length === 0) lines.push(`  （无）`);
+    else unverified.forEach((s) => lines.push(formatStudentLine(s)));
+    lines.push(``);
+    lines.push(`-------------------------------------------`);
+    lines.push(`二、人工确认上车：${manualBoarded.length} 人`);
+    lines.push(`-------------------------------------------`);
+    if (manualBoarded.length === 0) lines.push(`  （无）`);
+    else manualBoarded.forEach((s) => lines.push(formatStudentLine(s)));
+    lines.push(``);
+    lines.push(`-------------------------------------------`);
+    lines.push(`三、未乘车（确认不坐）：${notRidden.length} 人`);
+    lines.push(`-------------------------------------------`);
+    if (notRidden.length === 0) lines.push(`  （无）`);
+    else notRidden.forEach((s) => lines.push(formatStudentLine(s)));
+    lines.push(``);
+    lines.push(`-------------------------------------------`);
+    lines.push(`四、已上车未下车：${notAlighted.length} 人`);
+    lines.push(`-------------------------------------------`);
+    if (notAlighted.length === 0) lines.push(`  （无）`);
+    else notAlighted.forEach((s) => lines.push(formatStudentLine(s)));
+    lines.push(``);
+    lines.push(`-------------------------------------------`);
+    lines.push(`五、已完成上下车：${completed.length} 人`);
+    lines.push(`-------------------------------------------`);
+    if (completed.length === 0) lines.push(`  （无）`);
+    else completed.slice(0, 50).forEach((s) => lines.push(formatStudentLine(s)));
+    if (completed.length > 50) lines.push(`  ... 等共 ${completed.length} 人`);
+    lines.push(``);
+    lines.push(`===========================================`);
+    lines.push(`—— 交接单结束 ——`);
+    return lines.join('\n');
+  }, [summary, date, shift, route, operatorName, completionRate, actualBoarded, totalStudents]);
+
+  const handleCopy = async () => {
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(handoverText);
+      } else {
+        const ta = document.createElement('textarea');
+        ta.value = handoverText;
+        ta.style.position = 'fixed';
+        ta.style.left = '-9999px';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+      }
+      setCopyState('copied');
+      setTimeout(() => setCopyState('idle'), 2200);
+    } catch {
+      setCopyState('idle');
+    }
+  };
+
+  const handleDownload = () => {
+    const blob = new Blob([handoverText], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const routeLabel = route?.name.replace(/[\\/:*?"<>|]/g, '_') || '交接单';
+    const shiftLabel = shift === 'morning' ? '早班' : '晚班';
+    a.download = `${date}-${routeLabel}-${shiftLabel}-值班交接单.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
 
   return (
     <div className="overflow-hidden rounded-2xl border border-slate-200 bg-gradient-to-br from-white to-slate-50/40 shadow-sm animate-in fade-in slide-in-from-top-2">
@@ -136,14 +242,48 @@ export const HandoverSummaryCard: React.FC<HandoverSummaryCardProps> = ({
               </p>
             </div>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            icon={expanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-            onClick={() => setExpanded((e) => !e)}
-          >
-            {expanded ? '收起明细' : '展开明细'}
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            {onOpenReview && (
+              <Button
+                variant="primary"
+                size="sm"
+                icon={<Search className="h-3.5 w-3.5" />}
+                onClick={onOpenReview}
+              >
+                交接复盘
+              </Button>
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              icon={
+                copyState === 'copied' ? (
+                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+                ) : (
+                  <Copy className="h-3.5 w-3.5" />
+                )
+              }
+              onClick={handleCopy}
+            >
+              {copyState === 'copied' ? '已复制' : '复制交接单'}
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              icon={<Download className="h-3.5 w-3.5" />}
+              onClick={handleDownload}
+            >
+              导出TXT
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              icon={expanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+              onClick={() => setExpanded((e) => !e)}
+            >
+              {expanded ? '收起明细' : '展开明细'}
+            </Button>
+          </div>
         </div>
 
         <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-5">

@@ -1,13 +1,31 @@
 import * as React from 'react';
-import type { EnrichedRideRecord, Student } from '../../../types';
+import type { EnrichedRideRecord, Student, RideRecord } from '../../../types';
 import { StatusBadge } from '../../common';
-import { getStatusLabel, getStatusColor, getShiftLabel, findStudentById } from '../../../utils/stats';
-import { User, Car, MapPin, Clock, ChevronDown, ChevronUp, ExternalLink } from 'lucide-react';
+import {
+  getStatusLabel,
+  getStatusColor,
+  getShiftLabel,
+  findStudentById,
+  analyzeStudentAnomaly,
+} from '../../../utils/stats';
+import {
+  User,
+  Car,
+  MapPin,
+  Clock,
+  ChevronDown,
+  ChevronUp,
+  ExternalLink,
+  AlertTriangle,
+  AlertOctagon,
+} from 'lucide-react';
 import { clsx } from 'clsx';
 import { students as allStudents } from '../../../data';
+import type { StudentAnomalyAlert } from '../../../utils/stats';
 
 interface RecordsTableProps {
   records: EnrichedRideRecord[];
+  allRideRecords?: RideRecord[];
   onStudentClick?: (student: Student) => void;
 }
 
@@ -15,12 +33,24 @@ interface ExpandedRows {
   [key: string]: boolean;
 }
 
-export const RecordsTable: React.FC<RecordsTableProps> = ({ records, onStudentClick }) => {
+export const RecordsTable: React.FC<RecordsTableProps> = ({ records, allRideRecords = [], onStudentClick }) => {
   const [expanded, setExpanded] = React.useState<ExpandedRows>({});
 
   const toggleExpand = (id: string) => {
     setExpanded((prev) => ({ ...prev, [id]: !prev[id] }));
   };
+
+  const anomalyMap = React.useMemo(() => {
+    const m: Map<string, StudentAnomalyAlert> = new Map();
+    const seen = new Set<string>();
+    records.forEach((r) => {
+      if (seen.has(r.studentId)) return;
+      seen.add(r.studentId);
+      const alert = analyzeStudentAnomaly(r.studentId, allRideRecords, 7);
+      if (alert.level !== 'low') m.set(r.studentId, alert);
+    });
+    return m;
+  }, [records, allRideRecords]);
 
   const sortedRecords = React.useMemo(
     () => [...records].sort((a, b) => {
@@ -88,27 +118,66 @@ export const RecordsTable: React.FC<RecordsTableProps> = ({ records, onStudentCl
                     </td>
                     <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center gap-2">
-                        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-100">
-                          <User className="h-4 w-4 text-slate-500" />
+                        <div
+                          className={clsx(
+                            'flex h-8 w-8 items-center justify-center rounded-lg transition-colors',
+                            anomalyMap.has(record.studentId)
+                              ? anomalyMap.get(record.studentId)!.level === 'high'
+                                ? 'bg-red-100 text-red-600'
+                                : 'bg-amber-100 text-amber-600'
+                              : 'bg-slate-100 text-slate-500'
+                          )}
+                        >
+                          <User className="h-4 w-4" />
                         </div>
                         <div>
-                          <button
-                            type="button"
-                            className={clsx(
-                              'inline-flex items-center gap-1 font-medium text-slate-800 transition-colors hover:text-brand-600',
-                              onStudentClick && 'cursor-pointer'
-                            )}
-                            onClick={() => {
-                              if (!onStudentClick) return;
-                              const student = findStudentById(record.studentId, allStudents);
-                              if (student) onStudentClick(student);
-                            }}
-                          >
-                            {record.studentName}
-                            {onStudentClick && (
-                              <ExternalLink className="h-3 w-3 text-slate-400 transition-colors group-hover:text-brand-500" />
-                            )}
-                          </button>
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <button
+                              type="button"
+                              className={clsx(
+                                'inline-flex items-center gap-1 font-medium transition-colors hover:text-brand-600',
+                                anomalyMap.has(record.studentId)
+                                  ? anomalyMap.get(record.studentId)!.level === 'high'
+                                    ? 'text-red-700'
+                                    : 'text-amber-700'
+                                  : 'text-slate-800',
+                                onStudentClick && 'cursor-pointer'
+                              )}
+                              onClick={() => {
+                                if (!onStudentClick) return;
+                                const student = findStudentById(record.studentId, allStudents);
+                                if (student) onStudentClick(student);
+                              }}
+                            >
+                              {record.studentName}
+                              {onStudentClick && (
+                                <ExternalLink
+                                  className={clsx(
+                                    'h-3 w-3 transition-colors group-hover:text-brand-500',
+                                    anomalyMap.has(record.studentId) ? 'opacity-70' : 'text-slate-400'
+                                  )}
+                                />
+                              )}
+                            </button>
+                            {anomalyMap.has(record.studentId) &&
+                              (() => {
+                                const a = anomalyMap.get(record.studentId)!;
+                                const Icon = a.level === 'high' ? AlertOctagon : AlertTriangle;
+                                const bg = a.level === 'high' ? 'bg-red-50 text-red-700 ring-red-200' : 'bg-amber-50 text-amber-700 ring-amber-200';
+                                return (
+                                  <span
+                                    className={clsx(
+                                      'inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ring-1',
+                                      bg
+                                    )}
+                                    title={a.reasons.join('；')}
+                                  >
+                                    <Icon className="h-3 w-3" />
+                                    异常{a.totalAnomalyCount}
+                                  </span>
+                                );
+                              })()}
+                          </div>
                           <p className="text-xs text-slate-500">
                             {record.className} · {record.studentNo}
                           </p>
