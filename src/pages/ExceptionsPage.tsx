@@ -12,6 +12,7 @@ import {
   PartyPopper,
   X,
   User,
+  FileText2,
 } from 'lucide-react';
 import { SearchInput } from '../components/common/Input';
 import { StudentCard } from '../components/features/exceptions/StudentCard';
@@ -46,6 +47,8 @@ export const ExceptionsPage: React.FC = () => {
   const [formOpen, setFormOpen] = React.useState(false);
   const [receipt, setReceipt] = React.useState<ReceiptState | null>(null);
   const [justCompleted, setJustCompleted] = React.useState(false);
+  const [targetStudentId, setTargetStudentId] = React.useState<string | null>(null);
+  const [prevUnverifiedLen, setPrevUnverifiedLen] = React.useState<number | null>(null);
   const {
     exceptionRecords,
     addExceptionRecord,
@@ -93,12 +96,38 @@ export const ExceptionsPage: React.FC = () => {
   };
 
   React.useEffect(() => {
-    if (unverifiedStudents.length === 0 && !justCompleted) {
+    try {
+      const raw = sessionStorage.getItem('exception_target_student');
+      if (raw) {
+        const parsed = JSON.parse(raw) as { studentId: string };
+        setTargetStudentId(parsed.studentId);
+        setSearchKeyword(
+          allStudents.find((s) => s.id === parsed.studentId)?.name || ''
+        );
+      }
+    } catch {}
+    sessionStorage.removeItem('exception_target_student');
+  }, []);
+
+  React.useEffect(() => {
+    if (prevUnverifiedLen == null) {
+      setPrevUnverifiedLen(unverifiedStudents.length);
+      return;
+    }
+    if (
+      prevUnverifiedLen > 0 &&
+      unverifiedStudents.length === 0 &&
+      !justCompleted
+    ) {
       setJustCompleted(true);
       const t = setTimeout(() => setJustCompleted(false), 4000);
+      setPrevUnverifiedLen(0);
       return () => clearTimeout(t);
     }
-  }, [unverifiedStudents.length]);
+    if (prevUnverifiedLen !== unverifiedStudents.length) {
+      setPrevUnverifiedLen(unverifiedStudents.length);
+    }
+  }, [unverifiedStudents.length, prevUnverifiedLen, justCompleted]);
 
   const handleManualBoard = (student: Student) => {
     setSelectedStudent(student);
@@ -192,8 +221,18 @@ export const ExceptionsPage: React.FC = () => {
       data.shift
     );
 
+    appendReceipt([
+      {
+        studentId: selectedStudent.id,
+        name: selectedStudent.name,
+        action: 'manual',
+        time: nowTimeStr(),
+      },
+    ]);
+
     setSearchKeyword('');
     setSelectedStudent(null);
+    setFormOpen(false);
   };
 
   const today = format(new Date(), 'yyyy-MM-dd');
@@ -243,6 +282,53 @@ export const ExceptionsPage: React.FC = () => {
           accentColor="primary"
         />
       </div>
+
+      {targetStudentId &&
+        (() => {
+          const student = allStudents.find((s) => s.id === targetStudentId);
+          if (!student) return null;
+          const matchedExceptions = exceptionRecords.filter(
+            (e) =>
+              e.studentId === targetStudentId &&
+              e.date === date &&
+              e.shift === shift
+          );
+          return (
+            <div className="relative overflow-hidden rounded-2xl border border-indigo-200 bg-gradient-to-r from-indigo-50 via-violet-50 to-indigo-50 p-4 shadow-sm animate-in fade-in slide-in-from-top-3">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-500 text-white shadow shadow-indigo-500/25">
+                    <FileText2 className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-indigo-900">
+                      📌 已定位到学生：{student.name}
+                    </h3>
+                    <p className="mt-0.5 text-xs text-indigo-700/80">
+                      {student.className} · 学号 {student.studentNo} · 上车站点{' '}
+                      {allStops.find((s) => s.id === student.assignedStopId)?.name ||
+                        '未分配'}
+                    </p>
+                    <p className="mt-1 text-[11px] text-indigo-700/70">
+                      当前班次 {date} · {getShiftLabel(shift)} · 共找到{' '}
+                      <span className="font-semibold">{matchedExceptions.length}</span> 条相关异常记录
+                    </p>
+                  </div>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setTargetStudentId(null);
+                    setSearchKeyword('');
+                  }}
+                >
+                  清除定位
+                </Button>
+              </div>
+            </div>
+          );
+        })()}
 
       {justCompleted && unverifiedStudents.length === 0 && (
         <div className="relative overflow-hidden rounded-2xl border border-emerald-200 bg-gradient-to-r from-emerald-50 via-teal-50 to-emerald-50 p-5 shadow-sm animate-in fade-in slide-in-from-top-3">
@@ -418,7 +504,7 @@ export const ExceptionsPage: React.FC = () => {
         )}
       </div>
 
-      <ExceptionList exceptions={exceptionRecords} />
+      <ExceptionList exceptions={exceptionRecords} highlightStudentId={targetStudentId} />
 
       <ExceptionForm
         open={formOpen}

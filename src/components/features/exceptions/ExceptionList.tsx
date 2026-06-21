@@ -4,12 +4,14 @@ import type { ExceptionRecord, Student, BusRoute } from '../../../types';
 import { students as allStudents, routes as allRoutes } from '../../../data';
 import { StatusBadge } from '../../common';
 import { User, Clock, ShieldAlert, UserCheck, FileText } from 'lucide-react';
+import { clsx } from 'clsx';
 
 interface ExceptionListProps {
   exceptions: ExceptionRecord[];
+  highlightStudentId?: string | null;
 }
 
-export const ExceptionList: React.FC<ExceptionListProps> = ({ exceptions }) => {
+export const ExceptionList: React.FC<ExceptionListProps> = ({ exceptions, highlightStudentId }) => {
   const today = format(new Date(), 'yyyy-MM-dd');
   const todayExceptions = React.useMemo(
     () =>
@@ -67,7 +69,12 @@ export const ExceptionList: React.FC<ExceptionListProps> = ({ exceptions }) => {
               return (
                 <tr
                   key={record.id}
-                  className="transition-colors hover:bg-slate-50/50 animate-in fade-in"
+                  className={clsx(
+                    'transition-colors animate-in fade-in',
+                    highlightStudentId && record.studentId === highlightStudentId
+                      ? 'bg-indigo-50/70 hover:bg-indigo-50 ring-1 ring-inset ring-indigo-200'
+                      : 'hover:bg-slate-50/50'
+                  )}
                   style={{ animationDelay: `${idx * 30}ms` }}
                 >
                   <td className="px-5 py-4">

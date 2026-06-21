@@ -119,7 +119,11 @@ export const HandoverReviewModal: React.FC<HandoverReviewModalProps> = ({
     navigate('/records');
   };
 
-  const goToExceptions = () => {
+  const goToExceptionsWithStudent = (s: StudentRideStatus) => {
+    sessionStorage.setItem(
+      'exception_target_student',
+      JSON.stringify({ studentId: s.student.id })
+    );
     navigate('/exceptions');
   };
 
@@ -142,7 +146,12 @@ export const HandoverReviewModal: React.FC<HandoverReviewModalProps> = ({
               <StatusBadge variant="danger" size="sm">
                 需关注 {totalFocus} 人
               </StatusBadge>
-              <Button variant="secondary" size="sm" icon={<FileText className="h-3.5 w-3.5" />} onClick={goToExceptions}>
+              <Button
+                variant="secondary"
+                size="sm"
+                icon={<FileText className="h-3.5 w-3.5" />}
+                onClick={() => navigate('/exceptions')}
+              >
                 打开异常处理
               </Button>
             </div>
@@ -328,7 +337,7 @@ export const HandoverReviewModal: React.FC<HandoverReviewModalProps> = ({
                         variant="outline"
                         size="sm"
                         icon={<FileText className="h-3.5 w-3.5" />}
-                        onClick={goToExceptions}
+                        onClick={() => goToExceptionsWithStudent(s)}
                       >
                         异常记录
                       </Button>
