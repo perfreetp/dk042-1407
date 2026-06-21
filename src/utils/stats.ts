@@ -65,14 +65,41 @@ export function calculateStopStats(
   records: RideRecord[]
 ): StopStats {
   const studentIdsAtStop = studentsAtStop.map((s) => s.id);
-  const recordsAtStop = records.filter((r) => studentIdsAtStop.includes(r.studentId));
+  const recordsMap = new Map(records.map((r) => [r.studentId, r]));
 
   const totalExpected = studentIdsAtStop.length;
-  const boarded = recordsAtStop.filter((r) => r.status === 'boarded' || r.status === 'alighted').length;
-  const manualBoarded = recordsAtStop.filter((r) => r.status === 'manual_boarded').length;
+
+  let boarded = 0;
+  let manualBoarded = 0;
+  let alighted = 0;
+  let notBoarded = 0;
+
+  studentsAtStop.forEach((student) => {
+    const record = recordsMap.get(student.id);
+    if (!record) {
+      notBoarded++;
+      return;
+    }
+    switch (record.status) {
+      case 'boarded':
+        boarded++;
+        break;
+      case 'alighted':
+        boarded++;
+        alighted++;
+        break;
+      case 'manual_boarded':
+        manualBoarded++;
+        break;
+      case 'missing':
+      case 'pending':
+      default:
+        notBoarded++;
+        break;
+    }
+  });
+
   const actualBoarded = boarded + manualBoarded;
-  const notBoarded = recordsAtStop.filter((r) => r.status === 'missing' || r.status === 'pending').length;
-  const alighted = recordsAtStop.filter((r) => r.status === 'alighted').length;
   const riskLevel = calculateRiskLevel(notBoarded, totalExpected);
   const completionRate = totalExpected === 0 ? 100 : Math.round((actualBoarded / totalExpected) * 100);
 
@@ -97,19 +124,41 @@ export function calculateDashboardOverview(
   date: string,
   shift: string
 ): DashboardOverview {
-  const routeStudentIds = routeStudents.map((s) => s.id);
-  const relevantRecords = records.filter((r) => routeStudentIds.includes(r.studentId));
+  const recordsMap = new Map(records.map((r) => [r.studentId, r]));
   const relevantExceptions = exceptions.filter((e) => e.date === date && e.shift === shift);
 
-  const totalStudents = routeStudentIds.length;
-  const totalBoarded = relevantRecords.filter(
-    (r) => r.status === 'boarded' || r.status === 'alighted'
-  ).length;
-  const totalManual = relevantRecords.filter((r) => r.status === 'manual_boarded').length;
-  const totalNotBoarded = relevantRecords.filter(
-    (r) => r.status === 'missing' || r.status === 'pending'
-  ).length;
-  const totalAlighted = relevantRecords.filter((r) => r.status === 'alighted').length;
+  const totalStudents = routeStudents.length;
+
+  let totalBoarded = 0;
+  let totalManual = 0;
+  let totalNotBoarded = 0;
+  let totalAlighted = 0;
+
+  routeStudents.forEach((student) => {
+    const record = recordsMap.get(student.id);
+    if (!record) {
+      totalNotBoarded++;
+      return;
+    }
+    switch (record.status) {
+      case 'boarded':
+        totalBoarded++;
+        break;
+      case 'alighted':
+        totalBoarded++;
+        totalAlighted++;
+        break;
+      case 'manual_boarded':
+        totalManual++;
+        break;
+      case 'missing':
+      case 'pending':
+      default:
+        totalNotBoarded++;
+        break;
+    }
+  });
+
   const totalExceptions = relevantExceptions.length;
   const actualBoarded = totalBoarded + totalManual;
   const completionRate = totalStudents === 0 ? 0 : Math.round((actualBoarded / totalStudents) * 100);
@@ -178,5 +227,64 @@ export function searchStudents(keyword: string, students: Student[]): Student[] 
       s.name.toLowerCase().includes(lower) ||
       s.className.toLowerCase().includes(lower) ||
       s.studentNo.includes(keyword)
+  );
+}
+
+export interface StudentRideStatus {
+  student: Student;
+  record?: RideRecord;
+  effectiveStatus: RideRecord['status'] | 'no_record';
+  boardTime?: string;
+  alightTime?: string;
+  boardStopName?: string;
+  alightStopName?: string;
+  boardMethod?: 'card' | 'manual';
+}
+
+export function getStudentsRideStatus(
+  students: Student[],
+  records: RideRecord[],
+  stops: BusStop[]
+): StudentRideStatus[] {
+  const recordsMap = new Map(records.map((r) => [r.studentId, r]));
+  const stopsMap = new Map(stops.map((s) => [s.id, s]));
+
+  return students.map((student) => {
+    const record = recordsMap.get(student.id);
+    let effectiveStatus: StudentRideStatus['effectiveStatus'] = 'no_record';
+    if (record) {
+      effectiveStatus = record.status;
+    }
+    return {
+      student,
+      record,
+      effectiveStatus,
+      boardTime: record?.boardTime,
+      alightTime: record?.alightTime,
+      boardStopName: record?.boardStopId ? stopsMap.get(record.boardStopId)?.name : undefined,
+      alightStopName: record?.alightStopId ? stopsMap.get(record.alightStopId)?.name : undefined,
+      boardMethod: record?.boardMethod,
+    };
+  });
+}
+
+export function getEffectiveStatusLabel(status: StudentRideStatus['effectiveStatus']): string {
+  if (status === 'no_record') return '无记录';
+  return getStatusLabel(status);
+}
+
+export function getEffectiveStatusColor(status: StudentRideStatus['effectiveStatus']): string {
+  if (status === 'no_record') return 'bg-red-50 text-red-700 border-red-200';
+  if (status === 'missing' || status === 'pending') return 'bg-red-50 text-red-700 border-red-200';
+  return getStatusColor(status);
+}
+
+export function getUnverifiedStudents(
+  routeStudents: Student[],
+  records: RideRecord[],
+  stops: BusStop[]
+): StudentRideStatus[] {
+  return getStudentsRideStatus(routeStudents, records, stops).filter(
+    (s) => s.effectiveStatus === 'no_record' || s.effectiveStatus === 'missing' || s.effectiveStatus === 'pending'
   );
 }

@@ -1,19 +1,21 @@
 import * as React from 'react';
-import type { EnrichedRideRecord } from '../../../types';
+import type { EnrichedRideRecord, Student } from '../../../types';
 import { StatusBadge } from '../../common';
-import { getStatusLabel, getStatusColor, getShiftLabel } from '../../../utils/stats';
-import { User, Car, MapPin, Clock, ChevronDown, ChevronUp } from 'lucide-react';
+import { getStatusLabel, getStatusColor, getShiftLabel, findStudentById } from '../../../utils/stats';
+import { User, Car, MapPin, Clock, ChevronDown, ChevronUp, ExternalLink } from 'lucide-react';
 import { clsx } from 'clsx';
+import { students as allStudents } from '../../../data';
 
 interface RecordsTableProps {
   records: EnrichedRideRecord[];
+  onStudentClick?: (student: Student) => void;
 }
 
 interface ExpandedRows {
   [key: string]: boolean;
 }
 
-export const RecordsTable: React.FC<RecordsTableProps> = ({ records }) => {
+export const RecordsTable: React.FC<RecordsTableProps> = ({ records, onStudentClick }) => {
   const [expanded, setExpanded] = React.useState<ExpandedRows>({});
 
   const toggleExpand = (id: string) => {
@@ -84,13 +86,29 @@ export const RecordsTable: React.FC<RecordsTableProps> = ({ records }) => {
                         {getShiftLabel(record.shift)}
                       </StatusBadge>
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center gap-2">
                         <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-100">
                           <User className="h-4 w-4 text-slate-500" />
                         </div>
                         <div>
-                          <p className="font-medium text-slate-800">{record.studentName}</p>
+                          <button
+                            type="button"
+                            className={clsx(
+                              'inline-flex items-center gap-1 font-medium text-slate-800 transition-colors hover:text-brand-600',
+                              onStudentClick && 'cursor-pointer'
+                            )}
+                            onClick={() => {
+                              if (!onStudentClick) return;
+                              const student = findStudentById(record.studentId, allStudents);
+                              if (student) onStudentClick(student);
+                            }}
+                          >
+                            {record.studentName}
+                            {onStudentClick && (
+                              <ExternalLink className="h-3 w-3 text-slate-400 transition-colors group-hover:text-brand-500" />
+                            )}
+                          </button>
                           <p className="text-xs text-slate-500">
                             {record.className} · {record.studentNo}
                           </p>

@@ -7,9 +7,10 @@ import { Inbox } from 'lucide-react';
 
 interface StopListProps {
   stopStats: StopStats[];
+  onStopClick?: (stop: BusStop) => void;
 }
 
-export const StopList: React.FC<StopListProps> = ({ stopStats }) => {
+export const StopList: React.FC<StopListProps> = ({ stopStats, onStopClick }) => {
   const { filterConditions } = useBusCheckStore();
 
   if (stopStats.length === 0) {
@@ -24,7 +25,10 @@ export const StopList: React.FC<StopListProps> = ({ stopStats }) => {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h3 className="text-base font-semibold text-slate-700">站点明细</h3>
+        <div className="flex items-center gap-2">
+          <h3 className="text-base font-semibold text-slate-700">站点明细</h3>
+          <span className="text-xs text-slate-400">（点击卡片查看学生）</span>
+        </div>
         <div className="flex items-center gap-4 text-xs text-slate-500">
           <div className="flex items-center gap-1.5">
             <span className="h-2 w-2 rounded-full bg-emerald-500" />
@@ -56,6 +60,7 @@ export const StopList: React.FC<StopListProps> = ({ stopStats }) => {
                 stats={stats}
                 index={idx}
                 address={stop?.address || ''}
+                onClick={() => stop && onStopClick?.(stop)}
               />
             );
           })}

@@ -3,16 +3,18 @@ import { useBusCheckStore } from '../store';
 import { RecordsFilter } from '../components/features/records/RecordsFilter';
 import { RecordsSummary } from '../components/features/records/RecordsSummary';
 import { RecordsTable } from '../components/features/records/RecordsTable';
-import type { EnrichedRideRecord } from '../types';
+import { StudentTimelineModal } from '../components/features/records/StudentTimelineModal';
+import type { EnrichedRideRecord, Student } from '../types';
 import {
   students as allStudents,
   routes as allRoutes,
   stops as allStops,
 } from '../data';
-import { ClipboardList } from 'lucide-react';
+import { ClipboardList, Calendar } from 'lucide-react';
 
 export const RecordsPage: React.FC = () => {
   const { recordFilters, rideRecords } = useBusCheckStore();
+  const [timelineStudent, setTimelineStudent] = React.useState<Student | null>(null);
 
   const enrichedRecords = React.useMemo<EnrichedRideRecord[]>(() => {
     const { startDate, endDate, plateNumber, studentName, routeId } = recordFilters;
@@ -60,7 +62,7 @@ export const RecordsPage: React.FC = () => {
         <div>
           <h2 className="text-xl font-bold text-slate-800">记录查询</h2>
           <p className="mt-1 text-sm text-slate-500">
-            回看历史乘车记录，用于向班主任或家长核对乘车情况
+            回看历史乘车记录，点击学生姓名查看个人乘车时间线
           </p>
         </div>
         <div className="hidden sm:flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 shadow-sm">
@@ -82,11 +84,24 @@ export const RecordsPage: React.FC = () => {
 
       <div>
         <div className="mb-3 flex items-center justify-between">
-          <h3 className="text-base font-semibold text-slate-700">乘车明细</h3>
+          <div className="flex items-center gap-2">
+            <h3 className="text-base font-semibold text-slate-700">乘车明细</h3>
+            <div className="hidden sm:flex items-center gap-1 rounded-md bg-brand-50 border border-brand-100 px-2 py-0.5 text-[10px] text-brand-700">
+              <Calendar className="h-3 w-3" />
+              点击学生姓名查看时间线
+            </div>
+          </div>
           <p className="text-xs text-slate-500">点击行可展开查看详情</p>
         </div>
-        <RecordsTable records={enrichedRecords} />
+        <RecordsTable records={enrichedRecords} onStudentClick={setTimelineStudent} />
       </div>
+
+      <StudentTimelineModal
+        open={timelineStudent !== null}
+        onClose={() => setTimelineStudent(null)}
+        student={timelineStudent}
+        rideRecords={rideRecords}
+      />
     </div>
   );
 };

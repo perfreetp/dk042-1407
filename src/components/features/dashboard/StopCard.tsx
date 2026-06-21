@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { MapPin, Users, UserCheck, UserX, LogOut, Clock } from 'lucide-react';
+import { MapPin, Users, UserCheck, UserX, LogOut, Clock, ChevronRight, Eye } from 'lucide-react';
 import { clsx } from 'clsx';
 import type { StopStats } from '../../../types';
 import { getRiskColor, getRiskLabel } from '../../../utils/stats';
@@ -9,16 +9,18 @@ interface StopCardProps {
   stats: StopStats;
   index: number;
   address: string;
+  onClick?: () => void;
 }
 
-export const StopCard: React.FC<StopCardProps> = ({ stats, index, address }) => {
+export const StopCard: React.FC<StopCardProps> = ({ stats, index, address, onClick }) => {
   const riskColor = getRiskColor(stats.riskLevel);
   const isLast = stats.completionRate >= 100;
 
   return (
     <div
+      onClick={onClick}
       className={clsx(
-        'group relative overflow-hidden rounded-xl border bg-white shadow-sm transition-all duration-300',
+        'group relative overflow-hidden rounded-xl border bg-white shadow-sm transition-all duration-300 cursor-pointer',
         'hover:shadow-lg hover:-translate-y-0.5',
         riskColor.border
       )}
@@ -40,7 +42,7 @@ export const StopCard: React.FC<StopCardProps> = ({ stats, index, address }) => 
             </div>
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2 flex-wrap">
-                <h4 className="truncate text-base font-semibold text-slate-800">
+                <h4 className="truncate text-base font-semibold text-slate-800 group-hover:text-slate-900">
                   {stats.stopName}
                 </h4>
                 <RiskBadge level={stats.riskLevel} />
@@ -50,6 +52,11 @@ export const StopCard: React.FC<StopCardProps> = ({ stats, index, address }) => 
                 <span className="truncate">{address}</span>
               </div>
             </div>
+          </div>
+          <div className="hidden sm:flex items-center gap-1 text-xs text-slate-400 group-hover:text-slate-600 group-hover:bg-slate-50 rounded-lg px-2 py-1 transition-colors">
+            <Eye className="h-3.5 w-3.5" />
+            <span>查看明细</span>
+            <ChevronRight className="h-3.5 w-3.5" />
           </div>
         </div>
 

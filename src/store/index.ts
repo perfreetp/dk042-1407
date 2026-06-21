@@ -43,6 +43,7 @@ interface BusCheckStore {
   }) => ExceptionRecord;
 
   updateRideRecordToManualBoard: (studentId: string, routeId: string, date: string, shift: ShiftType) => void;
+  markStudentAsMissing: (studentId: string, routeId: string, date: string, shift: ShiftType, reason?: string) => void;
 }
 
 const today = format(new Date(), 'yyyy-MM-dd');
@@ -169,6 +170,55 @@ export const useBusCheckStore = create<BusCheckStore>()(
             return r;
           }),
         }));
+      },
+
+      markStudentAsMissing: (studentId, routeId, date, shift, reason) => {
+        const { currentOperator, rideRecords } = get();
+        const now = new Date();
+        const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
+
+        const student = mockStudents.find((s) => s.id === studentId);
+        const existingRecord = rideRecords.find(
+          (r) => r.studentId === studentId && r.routeId === routeId && r.date === date && r.shift === shift
+        );
+
+        let updatedRecords: RideRecord[];
+        if (existingRecord) {
+          updatedRecords = rideRecords.map((r) =>
+            r.id === existingRecord.id ? { ...r, status: 'missing' as const } : r
+          );
+        } else {
+          const newRecord: RideRecord = {
+            id: `ride-${routeId}-${date}-${shift}-${studentId}-missing-${Date.now()}`,
+            studentId,
+            routeId,
+            date,
+            shift,
+            boardMethod: 'card',
+            alightMethod: null,
+            status: 'missing',
+          };
+          updatedRecords = [...rideRecords, newRecord];
+        }
+
+        const exceptionRecord: ExceptionRecord = {
+          id: generateExceptionId(),
+          date,
+          shift,
+          studentId,
+          routeId,
+          type: 'missing_card',
+          reason: reason || '确认未乘车',
+          remark: '标记为未乘车',
+          operatorId: currentOperator.id,
+          operatorName: currentOperator.name,
+          createdAt: `${date} ${timeStr}`,
+        };
+
+        set({
+          rideRecords: updatedRecords,
+          exceptionRecords: [exceptionRecord, ...get().exceptionRecords],
+        });
       },
     }),
     {

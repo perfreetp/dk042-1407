@@ -3,6 +3,7 @@ import { useBusCheckStore } from '../store';
 import { FilterBar } from '../components/features/dashboard/FilterBar';
 import { OverviewCards, OverallProgress } from '../components/features/dashboard/OverviewCards';
 import { StopList } from '../components/features/dashboard/StopList';
+import { StopDetailModal } from '../components/features/dashboard/StopDetailModal';
 import type { StopStats, BusStop } from '../types';
 import { calculateStopStats, calculateDashboardOverview, getShiftLabel } from '../utils/stats';
 import { routes as allRoutes, stops as allStops, students as allStudents } from '../data';
@@ -12,6 +13,7 @@ export const DashboardPage: React.FC = () => {
   const { filterConditions, rideRecords, exceptionRecords } = useBusCheckStore();
 
   const { routeId, date, shift } = filterConditions;
+  const [selectedStop, setSelectedStop] = React.useState<BusStop | null>(null);
 
   const route = React.useMemo(
     () => allRoutes.find((r) => r.id === routeId),
@@ -52,13 +54,18 @@ export const DashboardPage: React.FC = () => {
     });
   }, [routeStops, routeStudents, relevantRecords]);
 
+  const studentsAtSelectedStop = React.useMemo(() => {
+    if (!selectedStop) return [];
+    return routeStudents.filter((s) => s.assignedStopId === selectedStop.id);
+  }, [selectedStop, routeStudents]);
+
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-xl font-bold text-slate-800">线路看板</h2>
           <p className="mt-1 text-sm text-slate-500">
-            实时监控学生上下车情况，颜色提示风险等级
+            实时监控学生上下车情况，点击站点卡片查看学生明细
           </p>
         </div>
         {route && (
@@ -82,7 +89,15 @@ export const DashboardPage: React.FC = () => {
 
       <OverallProgress completionRate={overview.completionRate} />
 
-      <StopList stopStats={stopStats} />
+      <StopList stopStats={stopStats} onStopClick={setSelectedStop} />
+
+      <StopDetailModal
+        open={!!selectedStop}
+        onClose={() => setSelectedStop(null)}
+        stop={selectedStop}
+        studentsAtStop={studentsAtSelectedStop}
+        records={relevantRecords}
+      />
     </div>
   );
 };

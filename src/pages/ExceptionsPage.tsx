@@ -1,30 +1,71 @@
 import * as React from 'react';
-import { AlertTriangle, Search, UserX } from 'lucide-react';
+import { AlertTriangle, Search, UserX, Users, Clock, ListChecks } from 'lucide-react';
 import { SearchInput } from '../components/common/Input';
 import { StudentCard } from '../components/features/exceptions/StudentCard';
 import { ExceptionForm } from '../components/features/exceptions/ExceptionForm';
 import { ExceptionList } from '../components/features/exceptions/ExceptionList';
-import { students as allStudents } from '../data';
-import { searchStudents } from '../utils/stats';
+import { UnverifiedQueue } from '../components/features/exceptions/UnverifiedQueue';
+import { students as allStudents, stops as allStops } from '../data';
+import { searchStudents, getUnverifiedStudents } from '../utils/stats';
 import { useBusCheckStore } from '../store';
 import type { Student, ShiftType } from '../types';
 import { StatCard } from '../components/common';
 import { format } from 'date-fns';
+import { getShiftLabel } from '../utils/stats';
 
 export const ExceptionsPage: React.FC = () => {
   const [searchKeyword, setSearchKeyword] = React.useState('');
   const [selectedStudent, setSelectedStudent] = React.useState<Student | null>(null);
   const [formOpen, setFormOpen] = React.useState(false);
-  const { exceptionRecords, addExceptionRecord, updateRideRecordToManualBoard } = useBusCheckStore();
+  const {
+    exceptionRecords,
+    addExceptionRecord,
+    updateRideRecordToManualBoard,
+    markStudentAsMissing,
+    filterConditions,
+    rideRecords,
+  } = useBusCheckStore();
 
   const searchResults = React.useMemo(() => {
     if (!searchKeyword.trim()) return [];
     return searchStudents(searchKeyword, allStudents);
   }, [searchKeyword]);
 
+  const unverifiedStudents = React.useMemo(() => {
+    const { routeId, date, shift } = filterConditions;
+    const routeStudents = allStudents.filter((s) => s.routeId === routeId);
+    const relevantRecords = rideRecords.filter(
+      (r) => r.routeId === routeId && r.date === date && r.shift === shift
+    );
+    return getUnverifiedStudents(routeStudents, relevantRecords, allStops);
+  }, [filterConditions, rideRecords]);
+
   const handleManualBoard = (student: Student) => {
     setSelectedStudent(student);
     setFormOpen(true);
+  };
+
+  const handleQuickManualBoard = (student: Student) => {
+    const { routeId, date, shift } = filterConditions;
+    addExceptionRecord({
+      studentId: student.id,
+      routeId: routeId || student.routeId,
+      shift,
+      date,
+      type: 'manual_board',
+      reason: '队列快速确认：学生忘带卡',
+    });
+    updateRideRecordToManualBoard(
+      student.id,
+      routeId || student.routeId,
+      date,
+      shift
+    );
+  };
+
+  const handleMarkMissing = (student: Student, routeId: string) => {
+    const { date, shift } = filterConditions;
+    markStudentAsMissing(student.id, routeId, date, shift, '值班老师确认未乘车');
   };
 
   const handleExceptionSubmit = (data: {
@@ -59,17 +100,18 @@ export const ExceptionsPage: React.FC = () => {
 
   const today = format(new Date(), 'yyyy-MM-dd');
   const todayExceptionCount = exceptionRecords.filter((e) => e.date === today).length;
+  const { routeId, date, shift } = filterConditions;
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <div>
         <h2 className="text-xl font-bold text-slate-800">异常处理</h2>
         <p className="mt-1 text-sm text-slate-500">
-          学生忘带卡或漏刷时，在此页面进行人工确认和记录
+          待核验队列集中处理未刷卡学生，支持人工确认上车或标记未乘车
         </p>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
           title="今日异常登记"
           value={todayExceptionCount}
@@ -79,22 +121,38 @@ export const ExceptionsPage: React.FC = () => {
           accentColor="warning"
         />
         <StatCard
+          title="待核验学生"
+          value={unverifiedStudents.length}
+          icon={<ListChecks className="h-6 w-6" />}
+          iconBg="bg-red-100"
+          iconColor="text-red-600"
+          accentColor="danger"
+        />
+        <StatCard
           title="在校学生总数"
           value={allStudents.length}
-          icon={<Search className="h-6 w-6" />}
+          icon={<Users className="h-6 w-6" />}
           iconBg="bg-blue-100"
           iconColor="text-blue-600"
           accentColor="info"
         />
         <StatCard
-          title="人工确认入口"
-          value="随时处理"
-          icon={<UserX className="h-6 w-6" />}
-          iconBg="bg-emerald-100"
-          iconColor="text-emerald-600"
-          accentColor="success"
+          title="当前核验班次"
+          value={`${getShiftLabel(shift)}`}
+          icon={<Clock className="h-6 w-6" />}
+          iconBg="bg-slate-100"
+          iconColor="text-slate-600"
+          accentColor="primary"
         />
       </div>
+
+      <UnverifiedQueue
+        students={unverifiedStudents}
+        currentShift={shift}
+        currentDate={date}
+        onManualBoard={handleQuickManualBoard}
+        onMarkMissing={handleMarkMissing}
+      />
 
       <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
         <div className="mb-4 flex items-center gap-2">
@@ -102,9 +160,9 @@ export const ExceptionsPage: React.FC = () => {
             <Search className="h-4 w-4 text-slate-600" />
           </div>
           <div>
-            <h3 className="text-base font-semibold text-slate-700">学生搜索</h3>
+            <h3 className="text-base font-semibold text-slate-700">搜索学生（手动处理）</h3>
             <p className="text-xs text-slate-500">
-              输入学生姓名、班级或学号进行快速查找
+              未在队列中找到时，可通过姓名/班级/学号精确查找
             </p>
           </div>
         </div>
